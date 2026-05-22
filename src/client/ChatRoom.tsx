@@ -5,7 +5,7 @@ import React, {
   useState,
 } from "react";
 import PartySocket from "partysocket";
-import type { ChatMessage, SystemMessage, ServerMessage } from "../shared/types";
+import type { ChatMessage, SystemMessage, OutgoingMessage as ServerMessage } from "../shared/types";
 import { MessageBubble } from "./MessageBubble";
 import type { Room } from "./App";
 

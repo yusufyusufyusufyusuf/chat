@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import type { Env } from "./index";
+import type { Env } from "../server/index";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

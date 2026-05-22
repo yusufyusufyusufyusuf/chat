@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "./AuthContext";
-import { LoginPage } from "./pages/LoginPage";
+import { LoginPage } from "./LoginPage";
 import { Home } from "./Home";
 import { ChatRoom } from "./ChatRoom";
 import { ProfileEditor } from "./ProfileEditor";

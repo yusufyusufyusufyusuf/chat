@@ -1,5 +1,5 @@
 import { Server, routePartykitRequest } from "partyserver";
-import { Auth } from "./auth";
+import { Auth } from "../shared/auth";
 import type {
   ChatMessage,
   SystemMessage,
@@ -40,7 +40,7 @@ export class Chat extends Server<Env> {
     `);
   }
 
-  onConnect(conn: Party.Connection) {
+  onConnect(conn: import("partyserver").Connection) {
     const rows = this.ctx.storage.sql
       .exec(`SELECT * FROM messages ORDER BY at DESC LIMIT ?`, this.MAX_HISTORY)
       .toArray()
@@ -75,7 +75,7 @@ export class Chat extends Server<Env> {
     this.broadcastOnlineCount();
   }
 
-  onMessage(conn: Party.Connection, raw: string) {
+  onMessage(conn: import("partyserver").Connection, raw: string) {
     let msg: IncomingClientMessage;
     try {
       msg = JSON.parse(raw);
@@ -234,7 +234,7 @@ export default {
 
     // ── PartyKit WebSocket (chat rooms) ──────────────────────────────────────
     return (
-      (await routePartykitRequest(req, env)) ??
+      (await routePartykitRequest(req, env as unknown as Record<string, unknown>)) ??
       new Response("Not found", { status: 404 })
     );
   },

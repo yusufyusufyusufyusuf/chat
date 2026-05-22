@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
-      const data = await res.json<AuthUser & { error?: string; token: string }>();
+      const data = await res.json() as (AuthUser & { error?: string; token: string });
       if (!res.ok) return data.error ?? "Login failed";
       localStorage.setItem("chat:token", data.token);
       setUser(data);
@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
-      const data = await res.json<AuthUser & { error?: string; token: string }>();
+      const data = await res.json() as (AuthUser & { error?: string; token: string });
       if (!res.ok) return data.error ?? "Registration failed";
       localStorage.setItem("chat:token", data.token);
       setUser(data);
@@ -98,7 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (!res.ok) throw new Error("Upload failed");
-      const { avatarUrl } = await res.json<{ avatarUrl: string }>();
+      const { avatarUrl } = await res.json() as { avatarUrl: string };
 
       // Add cache-busting param so browser reloads the new image
       const bustedUrl = `${avatarUrl}?t=${Date.now()}`;
