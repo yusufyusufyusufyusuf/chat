@@ -1,31 +1,33 @@
 {
-	"compatibility_date": "2025-10-08",
-	"main": "src/server/index.ts",
-	"name": "chat",
-	"migrations": [
-		{
-			"new_sqlite_classes": ["Chat"],
-			"tag": "v1"
-		}
-	],
-	"assets": {
-		"directory": "./public",
-		"binding": "ASSETS",
-		"not_found_handling": "single-page-application"
-	},
-	"build": {
-		"command": "esbuild src/client/index.tsx --bundle --splitting --format=esm --platform=browser --outdir=public/dist"
-	},
-	"durable_objects": {
-		"bindings": [
-			{
-				"class_name": "Chat",
-				"name": "Chat"
-			}
-		]
-	},
-	"observability": {
-		"enabled": true
-	},
-	"upload_source_maps": true
+  "name": "chat",
+  "main": "src/server/index.ts",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "Chat",   "class_name": "Chat"  },
+      { "name": "AuthDO", "class_name": "Auth"  }
+    ]
+  },
+
+  "r2_buckets": [
+    { "binding": "AVATARS", "bucket_name": "chat-avatars" }
+  ],
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Chat", "Auth"]
+    }
+  ],
+
+  "vars": {
+    "SESSION_SECRET": "change-me-to-a-random-string-in-production"
+  }
 }

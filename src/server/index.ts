@@ -1,63 +1,31 @@
 import { Server, routePartykitRequest } from "partyserver";
+import { Auth } from "./auth";
+import type {
+  ChatMessage,
+  SystemMessage,
+  TypingEvent,
+  OnlineCountEvent,
+  HistoryMessage,
+  IncomingClientMessage,
+  OutgoingMessage,
+} from "../shared/types";
 
 export interface Env {
   Chat: DurableObjectNamespace;
+  AuthDO: DurableObjectNamespace;
+  AVATARS: R2Bucket;
+  SESSION_SECRET: string;
 }
 
-// ── Shared message types (keep in sync with client/types.ts) ──────────────────
+export { Auth };
 
-export type ChatMessage = {
-  type: "message";
-  id: string;
-  userId: string;
-  username: string;
-  text: string;
-  at: number; // epoch ms
-};
-
-export type SystemMessage = {
-  type: "system";
-  id: string;
-  text: string;
-  at: number;
-};
-
-export type TypingEvent = {
-  type: "typing";
-  userId: string;
-  username: string;
-  isTyping: boolean;
-};
-
-export type OnlineCountEvent = {
-  type: "online";
-  count: number;
-};
-
-export type HistoryMessage = {
-  type: "history";
-  messages: (ChatMessage | SystemMessage)[];
-};
-
-export type IncomingMessage =
-  | { type: "message"; text: string; username: string; userId: string }
-  | { type: "typing"; username: string; userId: string; isTyping: boolean };
-
-export type OutgoingMessage =
-  | ChatMessage
-  | SystemMessage
-  | TypingEvent
-  | OnlineCountEvent
-  | HistoryMessage;
-
-// ── Durable Object ────────────────────────────────────────────────────────────
+// ── Chat Durable Object ───────────────────────────────────────────────────────
 
 export class Chat extends Server<Env> {
   static options = { hibernate: true };
 
   private MAX_HISTORY = 100;
 
-  // Called once when the DO is first created (SQLite migration)
   onStart() {
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -65,20 +33,16 @@ export class Chat extends Server<Env> {
         type      TEXT NOT NULL DEFAULT 'message',
         user_id   TEXT,
         username  TEXT,
+        avatar_url TEXT,
         text      TEXT NOT NULL,
         at        INTEGER NOT NULL
       );
     `);
   }
 
-  // New WebSocket connection
   onConnect(conn: Party.Connection) {
-    // Send history
     const rows = this.ctx.storage.sql
-      .exec(
-        `SELECT * FROM messages ORDER BY at DESC LIMIT ?`,
-        this.MAX_HISTORY
-      )
+      .exec(`SELECT * FROM messages ORDER BY at DESC LIMIT ?`, this.MAX_HISTORY)
       .toArray()
       .reverse();
 
@@ -95,14 +59,15 @@ export class Chat extends Server<Env> {
             id: r.id as string,
             userId: r.user_id as string,
             username: r.username as string,
+            avatarUrl: (r.avatar_url as string) ?? null,
             text: r.text as string,
             at: r.at as number,
           } satisfies ChatMessage)
     );
 
-    conn.send(JSON.stringify({ type: "history", messages } satisfies HistoryMessage));
-
-    // Broadcast updated online count
+    conn.send(
+      JSON.stringify({ type: "history", messages } satisfies HistoryMessage)
+    );
     this.broadcastOnlineCount();
   }
 
@@ -111,7 +76,7 @@ export class Chat extends Server<Env> {
   }
 
   onMessage(conn: Party.Connection, raw: string) {
-    let msg: IncomingMessage;
+    let msg: IncomingClientMessage;
     try {
       msg = JSON.parse(raw);
     } catch {
@@ -119,7 +84,6 @@ export class Chat extends Server<Env> {
     }
 
     if (msg.type === "typing") {
-      // Relay typing events to everyone except sender
       const event: TypingEvent = {
         type: "typing",
         userId: msg.userId,
@@ -137,18 +101,17 @@ export class Chat extends Server<Env> {
       const id = crypto.randomUUID();
       const at = Date.now();
 
-      // Persist
       this.ctx.storage.sql.exec(
-        `INSERT INTO messages (id, type, user_id, username, text, at)
-         VALUES (?, 'message', ?, ?, ?, ?)`,
+        `INSERT INTO messages (id, type, user_id, username, avatar_url, text, at)
+         VALUES (?, 'message', ?, ?, ?, ?, ?)`,
         id,
         msg.userId,
         msg.username,
+        msg.avatarUrl ?? null,
         text,
         at
       );
 
-      // Trim old rows
       this.ctx.storage.sql.exec(
         `DELETE FROM messages WHERE id NOT IN (
            SELECT id FROM messages ORDER BY at DESC LIMIT ?
@@ -161,16 +124,14 @@ export class Chat extends Server<Env> {
         id,
         userId: msg.userId,
         username: msg.username,
+        avatarUrl: msg.avatarUrl ?? null,
         text,
         at,
       };
 
-      // Broadcast to all (including sender so they get the canonical message)
       this.broadcast(JSON.stringify(out));
     }
   }
-
-  // ── Helpers ─────────────────────────────────────────────────────────────────
 
   private broadcastOnlineCount() {
     const count = [...this.getConnections()].length;
@@ -181,11 +142,100 @@ export class Chat extends Server<Env> {
 
 // ── Worker entry point ────────────────────────────────────────────────────────
 
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+}
+
+function authDO(env: Env) {
+  return env.AuthDO.get(env.AuthDO.idFromName("global"));
+}
+
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext) {
+    const url = new URL(req.url);
+
+    // CORS preflight
+    if (req.method === "OPTIONS") {
+      return new Response(null, { headers: corsHeaders() });
+    }
+
+    // ── Auth routes (/auth/*) ────────────────────────────────────────────────
+    if (url.pathname.startsWith("/auth/")) {
+      const res = await authDO(env).fetch(req);
+      const body = await res.text();
+      return new Response(body, {
+        status: res.status,
+        headers: { ...Object.fromEntries(res.headers), ...corsHeaders() },
+      });
+    }
+
+    // ── Avatar upload: PUT /avatar ───────────────────────────────────────────
+    if (req.method === "PUT" && url.pathname === "/avatar") {
+      const token = req.headers.get("Authorization")?.replace("Bearer ", "");
+      if (!token) return new Response("Unauthorized", { status: 401 });
+
+      // Verify via auth DO
+      const verifyRes = await authDO(env).fetch(
+        new Request(`${url.origin}/auth/verify`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      );
+      if (!verifyRes.ok) return new Response("Unauthorized", { status: 401 });
+      const { userId } = await verifyRes.json<{ userId: string }>();
+
+      const contentType = req.headers.get("Content-Type") ?? "image/jpeg";
+      const ext = contentType.includes("png")
+        ? "png"
+        : contentType.includes("webp")
+        ? "webp"
+        : "jpg";
+      const key = `avatars/${userId}.${ext}`;
+
+      await env.AVATARS.put(key, req.body, {
+        httpMetadata: { contentType },
+      });
+
+      const avatarUrl = `/avatar/${userId}.${ext}`;
+
+      // Update in auth DO
+      await authDO(env).fetch(
+        new Request(`${url.origin}/auth/avatar`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ avatarUrl }),
+        })
+      );
+
+      return new Response(JSON.stringify({ avatarUrl }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders() },
+      });
+    }
+
+    // ── Avatar serve: GET /avatar/:filename ──────────────────────────────────
+    if (req.method === "GET" && url.pathname.startsWith("/avatar/")) {
+      const filename = url.pathname.replace("/avatar/", "");
+      const obj = await env.AVATARS.get(`avatars/${filename}`);
+      if (!obj) return new Response("Not found", { status: 404 });
+
+      return new Response(obj.body, {
+        headers: {
+          "Content-Type": obj.httpMetadata?.contentType ?? "image/jpeg",
+          "Cache-Control": "public, max-age=86400",
+        },
+      });
+    }
+
+    // ── PartyKit WebSocket (chat rooms) ──────────────────────────────────────
     return (
-      (await routePartykitRequest(req, env)) ||
-      env.Chat.get(env.Chat.idFromName("default")).fetch(req)
+      (await routePartykitRequest(req, env)) ??
+      new Response("Not found", { status: 404 })
     );
   },
 } satisfies ExportedHandler<Env>;

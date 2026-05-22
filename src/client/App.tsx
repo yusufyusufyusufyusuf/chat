@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { AuthProvider, useAuth } from "./AuthContext";
+import { LoginPage } from "./pages/LoginPage";
 import { Home } from "./Home";
 import { ChatRoom } from "./ChatRoom";
-import { generateUsername, getUserId, ROOM_COLORS } from "./utils";
+import { ProfileEditor } from "./ProfileEditor";
+import { ROOM_COLORS } from "./utils";
 
 export type Room = {
   id: string;
@@ -10,43 +13,29 @@ export type Room = {
   joinedAt: number;
 };
 
-export function App() {
+// Inner shell — only rendered when authenticated
+function Shell() {
+  const { user } = useAuth();
+
   const [rooms, setRooms] = useState<Room[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem("chat:rooms") ?? "[]");
-    } catch {
-      return [];
-    }
+    try { return JSON.parse(localStorage.getItem("chat:rooms") ?? "[]"); }
+    catch { return []; }
   });
 
   const [activeRoomId, setActiveRoomId] = useState<string | null>(() => {
-    // Check URL for room id
-    const hash = window.location.hash.replace("#", "").trim();
-    return hash || null;
+    return window.location.hash.replace("#", "").trim() || null;
   });
 
-  const [username, setUsername] = useState<string>(() => {
-    return localStorage.getItem("chat:username") ?? generateUsername();
-  });
+  const [showProfile, setShowProfile] = useState(false);
 
-  const userId = getUserId();
-
-  // Persist username
-  useEffect(() => {
-    localStorage.setItem("chat:username", username);
-  }, [username]);
-
-  // Persist rooms
   useEffect(() => {
     localStorage.setItem("chat:rooms", JSON.stringify(rooms));
   }, [rooms]);
 
-  // Sync URL hash with active room
   useEffect(() => {
     window.location.hash = activeRoomId ?? "";
   }, [activeRoomId]);
 
-  // Handle browser back/forward
   useEffect(() => {
     const handler = () => {
       const hash = window.location.hash.replace("#", "").trim();
@@ -56,29 +45,16 @@ export function App() {
     return () => window.removeEventListener("hashchange", handler);
   }, []);
 
-  const joinRoom = useCallback(
-    (roomId: string, roomName?: string) => {
-      const id = roomId.trim().toLowerCase().replace(/\s+/g, "-");
-      if (!id) return;
-
-      setRooms((prev) => {
-        if (prev.find((r) => r.id === id)) return prev;
-        const colorIndex = prev.length % ROOM_COLORS.length;
-        return [
-          ...prev,
-          {
-            id,
-            name: roomName ?? `#${id}`,
-            color: ROOM_COLORS[colorIndex],
-            joinedAt: Date.now(),
-          },
-        ];
-      });
-
-      setActiveRoomId(id);
-    },
-    []
-  );
+  const joinRoom = useCallback((roomId: string) => {
+    const id = roomId.trim().toLowerCase().replace(/\s+/g, "-");
+    if (!id) return;
+    setRooms((prev) => {
+      if (prev.find((r) => r.id === id)) return prev;
+      const colorIndex = prev.length % ROOM_COLORS.length;
+      return [...prev, { id, name: `#${id}`, color: ROOM_COLORS[colorIndex], joinedAt: Date.now() }];
+    });
+    setActiveRoomId(id);
+  }, []);
 
   const leaveRoom = useCallback((roomId: string) => {
     setRooms((prev) => prev.filter((r) => r.id !== roomId));
@@ -86,6 +62,8 @@ export function App() {
   }, []);
 
   const activeRoom = rooms.find((r) => r.id === activeRoomId) ?? null;
+  const avatarSrc = user?.avatarUrl ?? null;
+  const initial = user?.username?.[0]?.toUpperCase() ?? "?";
 
   return (
     <div className="app">
@@ -103,10 +81,7 @@ export function App() {
               className={`room-item ${room.id === activeRoomId ? "active" : ""}`}
               onClick={() => setActiveRoomId(room.id)}
             >
-              <span
-                className="room-dot"
-                style={{ background: room.color }}
-              />
+              <span className="room-dot" style={{ background: room.color }} />
               <span className="room-item-name">{room.name}</span>
             </button>
           ))}
@@ -116,19 +91,21 @@ export function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <div className="user-row">
-            <div className="user-avatar" style={{ background: "#6366f1" }}>
-              {username[0]?.toUpperCase()}
+          <button
+            className="user-row user-row-btn"
+            onClick={() => setShowProfile(true)}
+            title="Edit profile"
+          >
+            <div className="user-avatar-wrap">
+              {avatarSrc ? (
+                <img src={avatarSrc} alt="avatar" className="user-avatar-img" />
+              ) : (
+                <div className="user-avatar">{initial}</div>
+              )}
+              <span className="user-avatar-edit">✏️</span>
             </div>
-            <input
-              className="username-input"
-              value={username}
-              onChange={(e) => setUsername(e.target.value.trim() || username)}
-              maxLength={24}
-              title="Your display name"
-              spellCheck={false}
-            />
-          </div>
+            <span className="user-display-name">{user?.username}</span>
+          </button>
         </div>
       </aside>
 
@@ -136,14 +113,40 @@ export function App() {
         {activeRoom ? (
           <ChatRoom
             room={activeRoom}
-            username={username}
-            userId={userId}
+            username={user!.username}
+            userId={user!.userId}
+            avatarUrl={user!.avatarUrl}
             onLeave={() => leaveRoom(activeRoom.id)}
           />
         ) : (
           <Home onJoin={joinRoom} rooms={rooms} />
         )}
       </main>
+
+      {showProfile && <ProfileEditor onClose={() => setShowProfile(false)} />}
     </div>
+  );
+}
+
+// Root — shows login or app
+function Root() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="splash">
+        <span className="splash-logo">💬</span>
+      </div>
+    );
+  }
+
+  return user ? <Shell /> : <LoginPage />;
+}
+
+export function App() {
+  return (
+    <AuthProvider>
+      <Root />
+    </AuthProvider>
   );
 }
