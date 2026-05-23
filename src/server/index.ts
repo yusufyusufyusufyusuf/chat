@@ -164,7 +164,9 @@ export default {
     if (env.ASSETS && !url.pathname.startsWith('/auth') && !url.pathname.startsWith('/avatar') && !req.headers.get("upgrade")) {
       try {
         let resp = await env.ASSETS.fetch(req);
-        if (resp.ok) return resp;
+        if (resp.status < 400) {
+            return resp;
+        }
       } catch (e) {
           // fallback routing below
       }
