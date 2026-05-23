@@ -14,6 +14,7 @@ export interface Env {
   Chat: DurableObjectNamespace;
   AuthDO: DurableObjectNamespace;
   AVATARS: R2Bucket;
+  ASSETS?: Fetcher;
   SESSION_SECRET: string;
 }
 
@@ -157,6 +158,17 @@ function authDO(env: Env) {
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(req.url);
+
+    // Serve static assets natively if supported/bound
+    // Cloudflare pages/assets will serve index.html when root / is hit
+    if (env.ASSETS && !url.pathname.startsWith('/auth') && !url.pathname.startsWith('/avatar') && !req.headers.get("upgrade")) {
+      try {
+        let resp = await env.ASSETS.fetch(req);
+        if (resp.ok) return resp;
+      } catch (e) {
+          // fallback routing below
+      }
+    }
 
     // CORS preflight
     if (req.method === "OPTIONS") {
