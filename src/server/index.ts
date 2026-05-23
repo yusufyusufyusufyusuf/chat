@@ -70,7 +70,7 @@ export class Auth extends DurableObject<Env> {
     return this.env.SESSION_SECRET ?? "change-me-in-production";
   }
 
-  override onStart() {
+  onStart() {
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS users (
         user_id       TEXT PRIMARY KEY,
@@ -83,7 +83,7 @@ export class Auth extends DurableObject<Env> {
     `);
   }
 
-  override async fetch(req: Request): Promise<Response> {
+  async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
     if (req.method === "POST" && url.pathname === "/auth/register") return this.register(req);
     if (req.method === "POST" && url.pathname === "/auth/login")    return this.login(req);
@@ -175,7 +175,7 @@ export class Chat extends Server<Env> {
     `);
   }
 
-  onConnect(conn: Party.Connection) {
+  onConnect(conn: import("partyserver").Connection) {
     const rows = this.ctx.storage.sql
       .exec(`SELECT * FROM messages ORDER BY at DESC LIMIT ?`, this.MAX_HISTORY)
       .toArray().reverse();
@@ -192,7 +192,7 @@ export class Chat extends Server<Env> {
 
   onClose() { this.broadcastOnlineCount(); }
 
-  onMessage(conn: Party.Connection, raw: string) {
+  onMessage(conn: import("partyserver").Connection, raw: string) {
     let msg: IncomingClientMessage;
     try { msg = JSON.parse(raw); } catch { return; }
 
@@ -287,6 +287,6 @@ export default {
       });
     }
 
-    return (await routePartykitRequest(req, env)) ?? new Response("Not found", { status: 404 });
+    return (await routePartykitRequest(req, env as unknown as Record<string, unknown>)) ?? new Response("Not found", { status: 404 });
   },
 } satisfies ExportedHandler<Env>;
