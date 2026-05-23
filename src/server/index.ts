@@ -161,7 +161,7 @@ export default {
 
     // Serve static assets natively if supported/bound
     // Cloudflare pages/assets will serve index.html when root / is hit
-    if (env.ASSETS && !url.pathname.startsWith('/auth') && !url.pathname.startsWith('/avatar') && !req.headers.get("upgrade")) {
+    if (env.ASSETS && !url.pathname.startsWith('/auth') && !url.pathname.startsWith('/avatar') && !url.pathname.startsWith('/parties') && !req.headers.get("upgrade")) {
       try {
         let resp = await env.ASSETS.fetch(req);
         if (resp.status < 400) {
