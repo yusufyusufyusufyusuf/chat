@@ -6,28 +6,29 @@
 
   "assets": {
     "directory": "./public",
-    "binding": "ASSETS"
+    "binding": "ASSETS_DIR"
   },
 
   "durable_objects": {
     "bindings": [
-      { "name": "Chat",   "class_name": "Chat"  },
-      { "name": "AuthDO", "class_name": "Auth"  }
+      { "name": "Chat",    "class_name": "Chat"    },
+      { "name": "Auth",    "class_name": "Auth"    },
+      { "name": "Servers", "class_name": "Servers" }
     ]
   },
 
   "r2_buckets": [
-    { "binding": "AVATARS", "bucket_name": "chat-avatars" }
+    { "binding": "ASSETS", "bucket_name": "chat-assets" }
   ],
 
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["Chat", "Auth"]
+      "new_sqlite_classes": ["Chat", "Auth", "Servers"]
     }
   ],
 
   "vars": {
-    "SESSION_SECRET": "change-me-to-a-random-string-in-production"
+    "SESSION_SECRET": "change-me-to-a-long-random-string"
   }
 }
