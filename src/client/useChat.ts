@@ -5,7 +5,7 @@ import type { ChatMessage, SystemMessage, ServerEvent, ClientEvent } from "../sh
 export type DisplayMessage = ChatMessage | SystemMessage;
 
 interface Options {
-  roomId: string;           // channelId or dmId
+  roomId: string;
   userId: string;
   enabled?: boolean;
 }
@@ -34,7 +34,7 @@ export function useChat({ roomId, userId, enabled = true }: Options) {
     socket.addEventListener("close", () => setConnected(false));
 
     socket.addEventListener("message", (evt) => {
-      const msg: ServerEvent = JSON.parse(evt.data);
+      const msg: ServerEvent = JSON.parse(evt.data as string);
 
       if (msg.type === "history") { setMessages(msg.messages); return; }
       if (msg.type === "online")  { setOnlineCount(msg.count); return; }
@@ -54,7 +54,7 @@ export function useChat({ roomId, userId, enabled = true }: Options) {
             ? { ...m, reactions: (() => {
                 const r = { ...(m as ChatMessage).reactions };
                 if (!r[msg.emoji]) r[msg.emoji] = [];
-                if (msg.action === "add" && !r[msg.emoji].includes(msg.userId)) r[msg.emoji] = [...r[msg.emoji], msg.userId];
+                if (msg.action === "add"    && !r[msg.emoji].includes(msg.userId)) r[msg.emoji] = [...r[msg.emoji], msg.userId];
                 if (msg.action === "remove") r[msg.emoji] = r[msg.emoji].filter(u => u !== msg.userId);
                 if (!r[msg.emoji]?.length) delete r[msg.emoji];
                 return r;
@@ -89,13 +89,22 @@ export function useChat({ roomId, userId, enabled = true }: Options) {
     if (!trimmed) return;
     send({ type: "message", text: trimmed, ...meta });
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-    if (isTypingRef.current) { isTypingRef.current = false; send({ type: "typing", userId, username: meta.username, isTyping: false }); }
+    if (isTypingRef.current) {
+      isTypingRef.current = false;
+      send({ type: "typing", userId, username: meta.username, isTyping: false });
+    }
   }, [send, userId]);
 
   const sendTypingStart = useCallback((username: string) => {
-    if (!isTypingRef.current) { isTypingRef.current = true; send({ type: "typing", userId, username, isTyping: true }); }
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      send({ type: "typing", userId, username, isTyping: true });
+    }
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-    typingTimerRef.current = setTimeout(() => { isTypingRef.current = false; send({ type: "typing", userId, username, isTyping: false }); }, TYPING_DEBOUNCE);
+    typingTimerRef.current = setTimeout(() => {
+      isTypingRef.current = false;
+      send({ type: "typing", userId, username, isTyping: false });
+    }, TYPING_DEBOUNCE);
   }, [send, userId]);
 
   const sendReaction = useCallback((messageId: string, emoji: string, action: "add" | "remove") => {
@@ -110,7 +119,7 @@ export function useChat({ roomId, userId, enabled = true }: Options) {
     send({ type: "voice_leave", userId, channelId });
   }, [send, userId]);
 
-  const sendSignal = useCallback((to: string, data: RTCSessionDescriptionInit | RTCIceCandidateInit) => {
+  const sendSignal = useCallback((to: string, data: unknown) => {
     send({ type: "signal", from: userId, to, data });
   }, [send, userId]);
 

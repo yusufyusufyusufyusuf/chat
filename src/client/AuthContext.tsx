@@ -5,8 +5,8 @@ import * as api from "./api";
 interface AuthCtx {
   user: AuthUser | null;
   loading: boolean;
-  login: (u: string, p: string) => Promise<string | null>;
-  register: (u: string, p: string) => Promise<string | null>;
+  login: (username: string, password: string) => Promise<string | null>;
+  register: (username: string, password: string) => Promise<string | null>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   updateProfile: (data: { displayName?: string; bio?: string; bannerColor?: string; avatarUrl?: string }) => Promise<void>;
@@ -64,7 +64,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(u => u ? { ...u, ...data } : u);
   }, []);
 
-  return <Ctx.Provider value={{ user, loading, login, register, logout, refreshUser, updateProfile }}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={{ user, loading, login, register, logout, refreshUser, updateProfile }}>
+      {children}
+    </Ctx.Provider>
+  );
 }
 
 export const useAuth = () => useContext(Ctx);

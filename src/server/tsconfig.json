@@ -1,7 +1,8 @@
 {
 	"extends": "../../tsconfig.json",
 	"compilerOptions": {
-		"types": ["./worker-configuration.d.ts"]
+		"lib": ["esnext"],
+		"types": ["@cloudflare/workers-types"]
 	},
 	"include": ["."]
 }

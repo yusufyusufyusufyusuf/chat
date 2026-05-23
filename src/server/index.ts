@@ -23,17 +23,21 @@ async function sha256(s: string) {
   const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2,"0")).join("");
 }
+
 async function hmacHex(secret: string, data: string) {
   const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret),
     { name:"HMAC", hash:"SHA-256" }, false, ["sign"]);
   const s = await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(data));
   return [...new Uint8Array(s)].map(x => x.toString(16).padStart(2,"0")).join("");
 }
+
 function b64u(s: string) { return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=/g,""); }
+
 async function signTok(payload: object, secret: string) {
   const body = b64u(JSON.stringify(payload));
   return body + "." + await hmacHex(secret, body);
 }
+
 async function verifyTok(token: string, secret: string): Promise<Record<string,unknown>|null> {
   const i = token.lastIndexOf(".");
   if (i<0) return null;
@@ -41,9 +45,11 @@ async function verifyTok(token: string, secret: string): Promise<Record<string,u
   if (await hmacHex(secret,body) !== sig) return null;
   try { return JSON.parse(atob(body.replace(/-/g,"+").replace(/_/g,"/"))); } catch { return null; }
 }
+
 function jr(d: unknown, s=200) {
   return new Response(JSON.stringify(d), { status:s, headers:{"Content-Type":"application/json"} });
 }
+
 function nanoid(n=12) {
   const chars="abcdefghijklmnopqrstuvwxyz0123456789";
   const bytes = new Uint8Array(n);
@@ -61,28 +67,28 @@ export class Auth extends DurableObject<Env> {
   onStart() {
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS users (
-        user_id      TEXT PRIMARY KEY,
-        username     TEXT UNIQUE NOT NULL COLLATE NOCASE,
-        display_name TEXT NOT NULL,
+        user_id       TEXT PRIMARY KEY,
+        username      TEXT UNIQUE NOT NULL COLLATE NOCASE,
+        display_name  TEXT NOT NULL,
         password_hash TEXT NOT NULL,
-        salt         TEXT NOT NULL,
-        avatar_url   TEXT,
-        banner_color TEXT NOT NULL DEFAULT '#5865f2',
-        bio          TEXT NOT NULL DEFAULT '',
-        is_nitro     INTEGER NOT NULL DEFAULT 0,
-        badges       TEXT NOT NULL DEFAULT '[]',
-        created_at   INTEGER NOT NULL
+        salt          TEXT NOT NULL,
+        avatar_url    TEXT,
+        banner_color  TEXT NOT NULL DEFAULT '#5865f2',
+        bio           TEXT NOT NULL DEFAULT '',
+        is_nitro      INTEGER NOT NULL DEFAULT 0,
+        badges        TEXT NOT NULL DEFAULT '[]',
+        created_at    INTEGER NOT NULL
       );
     `);
   }
 
   async fetch(req: Request): Promise<Response> {
     const p = new URL(req.url).pathname;
-    if (req.method==="POST" && p==="/auth/register") return this.register(req);
-    if (req.method==="POST" && p==="/auth/login")    return this.login(req);
-    if (req.method==="GET"  && p==="/auth/verify")   return this.verify(req);
-    if (req.method==="POST" && p==="/auth/profile")  return this.updateProfile(req);
-    if (req.method==="GET"  && p.startsWith("/auth/user/")) return this.getUser(p.split("/")[3]);
+    if (req.method==="POST" && p==="/auth/register")       return this.register(req);
+    if (req.method==="POST" && p==="/auth/login")          return this.login(req);
+    if (req.method==="GET"  && p==="/auth/verify")         return this.verify(req);
+    if (req.method==="POST" && p==="/auth/profile")        return this.updateProfile(req);
+    if (req.method==="GET"  && p.startsWith("/auth/user/"))return this.getUser(p.split("/")[3]);
     return new Response("Not found",{status:404});
   }
 
@@ -90,10 +96,10 @@ export class Auth extends DurableObject<Env> {
     const { username, password } = await req.json<{username:string;password:string}>();
     if (!username||!password) return jr({error:"Required"},400);
     if (username.length<2||username.length>32) return jr({error:"Username 2-32 chars"},400);
-    if (!/^[a-zA-Z0-9_.-]+$/.test(username)) return jr({error:"Invalid chars"},400);
+    if (!/^[a-zA-Z0-9_.-]+$/.test(username)) return jr({error:"Invalid chars in username"},400);
     if (password.length<6) return jr({error:"Password min 6 chars"},400);
     const ex = this.ctx.storage.sql.exec(`SELECT user_id FROM users WHERE username=?`,username).toArray();
-    if (ex.length) return jr({error:"Username taken"},409);
+    if (ex.length) return jr({error:"Username already taken"},409);
     const userId=crypto.randomUUID(), salt=crypto.randomUUID();
     const passwordHash=await sha256(salt+password);
     this.ctx.storage.sql.exec(
@@ -120,7 +126,7 @@ export class Auth extends DurableObject<Env> {
     const token=req.headers.get("Authorization")?.replace("Bearer ","");
     if (!token) return jr({error:"No token"},401);
     const p=await verifyTok(token,this.sec);
-    if (!p||(p.exp as number)<Date.now()) return jr({error:"Expired"},401);
+    if (!p||(p.exp as number)<Date.now()) return jr({error:"Token expired"},401);
     type Row = {user_id:string;username:string;display_name:string;avatar_url:string|null;banner_color:string;bio:string;is_nitro:number;badges:string;created_at:number};
     const rows=this.ctx.storage.sql.exec(`SELECT * FROM users WHERE user_id=?`,p.userId).toArray() as Row[];
     if (!rows.length) return jr({error:"Not found"},404);
@@ -135,10 +141,10 @@ export class Auth extends DurableObject<Env> {
     if (!p) return jr({error:"Unauthorized"},401);
     const body=await req.json<{displayName?:string;bio?:string;bannerColor?:string;avatarUrl?:string}>();
     const sets:string[]=[], vals:unknown[]=[];
-    if (body.displayName) { sets.push("display_name=?"); vals.push(body.displayName.slice(0,32)); }
-    if (body.bio!==undefined) { sets.push("bio=?"); vals.push(body.bio.slice(0,190)); }
-    if (body.bannerColor) { sets.push("banner_color=?"); vals.push(body.bannerColor); }
-    if (body.avatarUrl!==undefined) { sets.push("avatar_url=?"); vals.push(body.avatarUrl); }
+    if (body.displayName!==undefined) { sets.push("display_name=?"); vals.push(body.displayName.slice(0,32)); }
+    if (body.bio!==undefined)         { sets.push("bio=?");          vals.push(body.bio.slice(0,190)); }
+    if (body.bannerColor!==undefined) { sets.push("banner_color=?"); vals.push(body.bannerColor); }
+    if (body.avatarUrl!==undefined)   { sets.push("avatar_url=?");   vals.push(body.avatarUrl); }
     if (sets.length) {
       vals.push(p.userId);
       this.ctx.storage.sql.exec(`UPDATE users SET ${sets.join(",")} WHERE user_id=?`,...vals);
@@ -148,7 +154,9 @@ export class Auth extends DurableObject<Env> {
 
   private getUser(userId: string) {
     type Row={user_id:string;username:string;display_name:string;avatar_url:string|null;banner_color:string;bio:string;is_nitro:number;badges:string;created_at:number};
-    const rows=this.ctx.storage.sql.exec(`SELECT user_id,username,display_name,avatar_url,banner_color,bio,is_nitro,badges,created_at FROM users WHERE user_id=?`,userId).toArray() as Row[];
+    const rows=this.ctx.storage.sql.exec(
+      `SELECT user_id,username,display_name,avatar_url,banner_color,bio,is_nitro,badges,created_at FROM users WHERE user_id=?`,userId
+    ).toArray() as Row[];
     if (!rows.length) return jr({error:"Not found"},404);
     const u=rows[0];
     return jr({userId:u.user_id,username:u.username,displayName:u.display_name,avatarUrl:u.avatar_url,bannerColor:u.banner_color,bio:u.bio,isNitro:!!u.is_nitro,badges:JSON.parse(u.badges),createdAt:u.created_at});
@@ -156,7 +164,7 @@ export class Auth extends DurableObject<Env> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-// Servers Durable Object  (server/channel/member management)
+// Servers Durable Object
 // ════════════════════════════════════════════════════════════════════════════════
 
 export class Servers extends DurableObject<Env> {
@@ -191,26 +199,27 @@ export class Servers extends DurableObject<Env> {
         topic      TEXT
       );
       CREATE TABLE IF NOT EXISTS dms (
-        dm_id          TEXT PRIMARY KEY,
-        participant_a  TEXT NOT NULL,
-        participant_b  TEXT NOT NULL,
-        created_at     INTEGER NOT NULL
+        dm_id         TEXT PRIMARY KEY,
+        participant_a TEXT NOT NULL,
+        participant_b TEXT NOT NULL,
+        created_at    INTEGER NOT NULL
       );
     `);
   }
 
   async fetch(req: Request): Promise<Response> {
     const url=new URL(req.url), p=url.pathname, m=req.method;
-    if (m==="POST" && p==="/servers/create")              return this.createServer(req);
-    if (m==="POST" && p==="/servers/join")                return this.joinServer(req);
-    if (m==="GET"  && p==="/servers/list")                return this.listServers(req);
-    if (m==="GET"  && p.match(/^\/servers\/[^/]+\/channels$/)) return this.listChannels(p.split("/")[2]);
-    if (m==="GET"  && p.match(/^\/servers\/[^/]+\/members$/))  return this.listMembers(p.split("/")[2]);
-    if (m==="POST" && p.match(/^\/servers\/[^/]+\/channels$/)) return this.createChannel(req,p.split("/")[2]);
-    if (m==="POST" && p.match(/^\/servers\/[^/]+\/leave$/))    return this.leaveServer(req,p.split("/")[2]);
-    if (m==="PATCH"&& p.match(/^\/servers\/[^/]+$/))           return this.updateServer(req,p.split("/")[2]);
-    if (m==="POST" && p==="/dms/open")                    return this.openDM(req);
-    if (m==="GET"  && p.startsWith("/dms/list/"))         return this.listDMs(p.split("/")[3]);
+    if (m==="POST" && p==="/servers/create")                     return this.createServer(req);
+    if (m==="POST" && p==="/servers/join")                       return this.joinServer(req);
+    if (m==="GET"  && p==="/servers/list")                       return this.listServers(req);
+    if (m==="GET"  && p.match(/^\/servers\/[^/]+\/channels$/))   return this.listChannels(p.split("/")[2]);
+    if (m==="GET"  && p.match(/^\/servers\/[^/]+\/members$/))    return this.listMembers(p.split("/")[2]);
+    if (m==="POST" && p.match(/^\/servers\/[^/]+\/channels$/))   return this.createChannel(req, p.split("/")[2]);
+    if (m==="POST" && p.match(/^\/servers\/[^/]+\/leave$/))      return this.leaveServer(req, p.split("/")[2]);
+    if (m==="DELETE"&& p.match(/^\/servers\/[^/]+$/))            return this.deleteServer(req, p.split("/")[2]);
+    if (m==="PATCH" && p.match(/^\/servers\/[^/]+$/))            return this.updateServer(req, p.split("/")[2]);
+    if (m==="POST" && p==="/dms/open")                           return this.openDM(req);
+    if (m==="GET"  && p.startsWith("/dms/list/"))                return this.listDMs(p.split("/")[3]);
     return new Response("Not found",{status:404});
   }
 
@@ -220,22 +229,21 @@ export class Servers extends DurableObject<Env> {
     const serverId=crypto.randomUUID(), inviteCode=nanoid(8);
     this.ctx.storage.sql.exec(
       `INSERT INTO servers(server_id,name,owner_id,invite_code,created_at)VALUES(?,?,?,?,?)`,
-      serverId,name.slice(0,100),userId,inviteCode,Date.now()
+      serverId, name.slice(0,100), userId, inviteCode, Date.now()
     );
     this.ctx.storage.sql.exec(
       `INSERT INTO members(server_id,user_id,role,joined_at)VALUES(?,?,'owner',?)`,
-      serverId,userId,Date.now()
+      serverId, userId, Date.now()
     );
-    // Default channels
-    const cats=[
-      {name:"general",type:"text",cat:"Text Channels",pos:0},
-      {name:"announcements",type:"announcement",cat:"Text Channels",pos:1},
-      {name:"General",type:"voice",cat:"Voice Channels",pos:2},
+    const defaults=[
+      {name:"general",      type:"text",        cat:"Text Channels",  pos:0},
+      {name:"announcements",type:"announcement",cat:"Text Channels",  pos:1},
+      {name:"General",      type:"voice",       cat:"Voice Channels", pos:2},
     ];
-    for (const c of cats) {
+    for (const c of defaults) {
       this.ctx.storage.sql.exec(
         `INSERT INTO channels(channel_id,server_id,name,type,category,position)VALUES(?,?,?,?,?,?)`,
-        crypto.randomUUID(),serverId,c.name,c.type,c.cat,c.pos
+        crypto.randomUUID(), serverId, c.name, c.type, c.cat, c.pos
       );
     }
     return jr({serverId,name,iconUrl:null,bannerUrl:null,ownerId:userId,inviteCode,boostCount:0,theme:null,createdAt:Date.now()});
@@ -251,7 +259,7 @@ export class Servers extends DurableObject<Env> {
     if (already.length) return jr({error:"Already a member"},409);
     this.ctx.storage.sql.exec(
       `INSERT INTO members(server_id,user_id,role,joined_at)VALUES(?,?,'member',?)`,
-      s.server_id,userId,Date.now()
+      s.server_id, userId, Date.now()
     );
     return jr({serverId:s.server_id,name:s.name,iconUrl:s.icon_url,ownerId:s.owner_id,inviteCode:s.invite_code,boostCount:s.boost_count,theme:s.theme,createdAt:s.created_at});
   }
@@ -287,7 +295,7 @@ export class Servers extends DurableObject<Env> {
     const maxPos=this.ctx.storage.sql.exec(`SELECT MAX(position) as p FROM channels WHERE server_id=?`,serverId).toArray()[0] as {p:number|null};
     this.ctx.storage.sql.exec(
       `INSERT INTO channels(channel_id,server_id,name,type,category,position)VALUES(?,?,?,?,?,?)`,
-      channelId,serverId,name.slice(0,100),type||"text",category||"General",(maxPos.p??-1)+1
+      channelId, serverId, name.slice(0,100), type||"text", category||"General", (maxPos.p??-1)+1
     );
     return jr({channelId,serverId,name,type:type||"text",category:category||"General",position:(maxPos.p??-1)+1,topic:null});
   }
@@ -296,8 +304,18 @@ export class Servers extends DurableObject<Env> {
     const { userId }=await req.json<{userId:string}>();
     const member=this.ctx.storage.sql.exec(`SELECT role FROM members WHERE server_id=? AND user_id=?`,serverId,userId).toArray() as {role:string}[];
     if (!member.length) return jr({error:"Not a member"},404);
-    if (member[0].role==="owner") return jr({error:"Owner cannot leave — transfer ownership first"},400);
+    if (member[0].role==="owner") return jr({error:"Transfer ownership before leaving"},400);
     this.ctx.storage.sql.exec(`DELETE FROM members WHERE server_id=? AND user_id=?`,serverId,userId);
+    return jr({ok:true});
+  }
+
+  private async deleteServer(req: Request, serverId: string) {
+    const body=await req.json<{userId:string}>();
+    const member=this.ctx.storage.sql.exec(`SELECT role FROM members WHERE server_id=? AND user_id=?`,serverId,body.userId).toArray() as {role:string}[];
+    if (!member.length||member[0].role!=="owner") return jr({error:"Only owner can delete"},403);
+    this.ctx.storage.sql.exec(`DELETE FROM channels WHERE server_id=?`,serverId);
+    this.ctx.storage.sql.exec(`DELETE FROM members WHERE server_id=?`,serverId);
+    this.ctx.storage.sql.exec(`DELETE FROM servers WHERE server_id=?`,serverId);
     return jr({ok:true});
   }
 
@@ -306,10 +324,10 @@ export class Servers extends DurableObject<Env> {
     const member=this.ctx.storage.sql.exec(`SELECT role FROM members WHERE server_id=? AND user_id=?`,serverId,body.userId).toArray() as {role:string}[];
     if (!member.length||!["owner","admin"].includes(member[0].role)) return jr({error:"No permission"},403);
     const sets:string[]=[], vals:unknown[]=[];
-    if (body.name)       { sets.push("name=?");       vals.push(body.name.slice(0,100)); }
-    if (body.iconUrl)    { sets.push("icon_url=?");   vals.push(body.iconUrl); }
-    if (body.bannerUrl)  { sets.push("banner_url=?"); vals.push(body.bannerUrl); }
-    if (body.theme)      { sets.push("theme=?");      vals.push(body.theme); }
+    if (body.name!==undefined)      { sets.push("name=?");       vals.push(body.name.slice(0,100)); }
+    if (body.iconUrl!==undefined)   { sets.push("icon_url=?");   vals.push(body.iconUrl); }
+    if (body.bannerUrl!==undefined) { sets.push("banner_url=?"); vals.push(body.bannerUrl); }
+    if (body.theme!==undefined)     { sets.push("theme=?");      vals.push(body.theme); }
     if (sets.length) { vals.push(serverId); this.ctx.storage.sql.exec(`UPDATE servers SET ${sets.join(",")} WHERE server_id=?`,...vals); }
     return jr({ok:true});
   }
@@ -335,14 +353,13 @@ export class Servers extends DurableObject<Env> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-// Chat Durable Object  (one per channel/DM — handles WS + history + voice)
+// Chat Durable Object (one per channel/DM — handles WS + history + voice)
 // ════════════════════════════════════════════════════════════════════════════════
 
 export class Chat extends Server<Env> {
   static options = { hibernate: true };
 
-  // voice: channelId -> Set<{connId, userId, username}>
-  private voiceRooms = new Map<string, Map<string,{userId:string;username:string}>>();
+  private voiceRooms = new Map<string, Map<string, {userId:string;username:string}>>();
 
   onStart() {
     this.ctx.storage.sql.exec(`
@@ -364,27 +381,19 @@ export class Chat extends Server<Env> {
     `);
   }
 
-  onConnect(conn: import("partyserver").Connection, ctx: import("partyserver").ConnectionContext) {
-    // Send last 100 messages
+  onConnect(conn: import("partyserver").Connection) {
     type Row={id:string;type:string;channel_id:string;user_id:string;username:string;display_name:string;avatar_url:string|null;is_nitro:number;text:string;attachments:string;reactions:string;edited_at:number|null;at:number};
     const rows=this.ctx.storage.sql.exec(`SELECT * FROM messages ORDER BY at DESC LIMIT 100`).toArray().reverse() as Row[];
-    const messages=(rows).map(r=>
+    const messages=rows.map(r =>
       r.type==="system"
         ? ({type:"system",id:r.id,text:r.text,at:r.at} as SystemMessage)
-        : ({
-            type:"message",id:r.id,channelId:r.channel_id,
-            userId:r.user_id,username:r.username,displayName:r.display_name,
-            avatarUrl:r.avatar_url,isNitro:!!r.is_nitro,text:r.text,
-            attachments:JSON.parse(r.attachments),reactions:JSON.parse(r.reactions),
-            editedAt:r.edited_at,at:r.at,
-          } as ChatMessage)
+        : ({type:"message",id:r.id,channelId:r.channel_id,userId:r.user_id,username:r.username,displayName:r.display_name,avatarUrl:r.avatar_url,isNitro:!!r.is_nitro,text:r.text,attachments:JSON.parse(r.attachments),reactions:JSON.parse(r.reactions),editedAt:r.edited_at,at:r.at} as ChatMessage)
     );
     conn.send(JSON.stringify({type:"history",messages} as HistoryEvent));
     this.broadcastOnline();
   }
 
   onClose(conn: import("partyserver").Connection) {
-    // Remove from any voice rooms
     for (const [channelId, members] of this.voiceRooms) {
       if (members.has(conn.id)) {
         const info=members.get(conn.id)!;
@@ -401,14 +410,13 @@ export class Chat extends Server<Env> {
   onMessage(conn: import("partyserver").Connection, raw: string) {
     let msg: ClientEvent;
     try { msg=JSON.parse(raw); } catch { return; }
-
     switch (msg.type) {
-      case "message":   return this.handleMessage(msg);
-      case "typing":    return this.broadcast(JSON.stringify(msg as TypingEvent), [conn.id]);
-      case "reaction":  return this.handleReaction(msg);
-      case "signal":    return this.handleSignal(conn, msg);
-      case "voice_join":return this.handleVoiceJoin(conn, msg);
-      case "voice_leave":return this.handleVoiceLeave(conn, msg);
+      case "message":     return this.handleMessage(msg);
+      case "typing":      return this.broadcast(JSON.stringify(msg as TypingEvent), [conn.id]);
+      case "reaction":    return this.handleReaction(msg);
+      case "signal":      return this.handleSignal(conn, msg);
+      case "voice_join":  return this.handleVoiceJoin(conn, msg);
+      case "voice_leave": return this.handleVoiceLeave(conn, msg);
     }
   }
 
@@ -419,13 +427,10 @@ export class Chat extends Server<Env> {
     this.ctx.storage.sql.exec(
       `INSERT INTO messages(id,type,channel_id,user_id,username,display_name,avatar_url,is_nitro,text,attachments,reactions,at)
        VALUES(?,'message',?,?,?,?,?,?,?,'[]','{}',?)`,
-      id,"",msg.userId,msg.username,msg.displayName,msg.avatarUrl??null,msg.isNitro?1:0,text,at
+      id, "", msg.userId, msg.username, msg.displayName, msg.avatarUrl??null, msg.isNitro?1:0, text, at
     );
-    // Keep last 500
     this.ctx.storage.sql.exec(`DELETE FROM messages WHERE id NOT IN (SELECT id FROM messages ORDER BY at DESC LIMIT 500)`);
-    const out: ChatMessage={type:"message",id,channelId:"",userId:msg.userId,username:msg.username,
-      displayName:msg.displayName,avatarUrl:msg.avatarUrl??null,isNitro:msg.isNitro,
-      text,attachments:[],reactions:{},editedAt:null,at};
+    const out: ChatMessage={type:"message",id,channelId:"",userId:msg.userId,username:msg.username,displayName:msg.displayName,avatarUrl:msg.avatarUrl??null,isNitro:msg.isNitro,text,attachments:[],reactions:{},editedAt:null,at};
     this.broadcast(JSON.stringify(out));
   }
 
@@ -435,7 +440,7 @@ export class Chat extends Server<Env> {
     if (!rows.length) return;
     const r: Record<string,string[]>=JSON.parse(rows[0].reactions);
     if (!r[msg.emoji]) r[msg.emoji]=[];
-    if (msg.action==="add" && !r[msg.emoji].includes(msg.userId)) r[msg.emoji].push(msg.userId);
+    if (msg.action==="add"    && !r[msg.emoji].includes(msg.userId)) r[msg.emoji].push(msg.userId);
     if (msg.action==="remove") r[msg.emoji]=r[msg.emoji].filter(u=>u!==msg.userId);
     if (!r[msg.emoji].length) delete r[msg.emoji];
     this.ctx.storage.sql.exec(`UPDATE messages SET reactions=? WHERE id=?`,JSON.stringify(r),msg.messageId);
@@ -444,16 +449,14 @@ export class Chat extends Server<Env> {
   }
 
   private handleSignal(conn: import("partyserver").Connection, msg: ClientEvent & {type:"signal"}) {
-    // Forward WebRTC signal to target peer
     for (const c of this.getConnections()) {
-      // We tag connections by userId via a convention; here we forward to all and let client filter
-      if (c.id !== conn.id) c.send(JSON.stringify(msg));
+      if (c.id !== conn.id) c.send(JSON.stringify(msg as SignalEvent));
     }
   }
 
   private handleVoiceJoin(conn: import("partyserver").Connection, msg: ClientEvent & {type:"voice_join"}) {
     if (!this.voiceRooms.has(msg.channelId)) this.voiceRooms.set(msg.channelId, new Map());
-    this.voiceRooms.get(msg.channelId)!.set(conn.id,{userId:msg.userId,username:msg.username});
+    this.voiceRooms.get(msg.channelId)!.set(conn.id, {userId:msg.userId,username:msg.username});
     const ev: VoiceJoinEvent={type:"voice_join",userId:msg.userId,username:msg.username,channelId:msg.channelId};
     this.broadcast(JSON.stringify(ev));
     this.broadcastVoiceState(msg.channelId);
@@ -484,33 +487,31 @@ export class Chat extends Server<Env> {
 // Worker entry point
 // ════════════════════════════════════════════════════════════════════════════════
 
-const CORS={
-  "Access-Control-Allow-Origin":"*",
-  "Access-Control-Allow-Methods":"GET,POST,PUT,PATCH,DELETE,OPTIONS",
-  "Access-Control-Allow-Headers":"Content-Type,Authorization",
+const CORS = {
+  "Access-Control-Allow-Origin":  "*",
+  "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization",
 };
 
-function authDO(env:Env)    { return env.Auth.get(env.Auth.idFromName("global")); }
-function serversDO(env:Env) { return env.Servers.get(env.Servers.idFromName("global")); }
+function authDO(env: Env)    { return env.Auth.get(env.Auth.idFromName("global")); }
+function serversDO(env: Env) { return env.Servers.get(env.Servers.idFromName("global")); }
 
 async function proxy(do_: DurableObjectStub, req: Request, overridePath?: string): Promise<Response> {
   const url=new URL(req.url);
   if (overridePath) url.pathname=overridePath;
-  const res=await do_.fetch(new Request(url.toString(),req));
+  const res=await do_.fetch(new Request(url.toString(), req));
   const body=await res.text();
-  return new Response(body,{status:res.status,headers:{"Content-Type":"application/json",...CORS}});
+  return new Response(body, {status:res.status, headers:{"Content-Type":"application/json",...CORS}});
 }
 
 export default {
   async fetch(req: Request, env: Env) {
     const url=new URL(req.url), p=url.pathname, m=req.method;
 
-    if (m==="OPTIONS") return new Response(null,{headers:CORS});
+    if (m==="OPTIONS") return new Response(null, {headers:CORS});
 
-    // Auth
-    if (p.startsWith("/auth/")) return proxy(authDO(env),req);
+    if (p.startsWith("/auth/")) return proxy(authDO(env), req);
 
-    // File upload (avatars / server icons)
     if (m==="PUT" && p==="/upload") {
       const token=req.headers.get("Authorization")?.replace("Bearer ","");
       if (!token) return new Response("Unauthorized",{status:401});
@@ -519,13 +520,12 @@ export default {
       const {userId}=await vr.json<{userId:string}>();
       const ct=req.headers.get("Content-Type")??"image/jpeg";
       const ext=ct.includes("png")?"png":ct.includes("webp")?"webp":"jpg";
-      const kind=url.searchParams.get("kind")??"avatar"; // avatar | icon | banner
+      const kind=url.searchParams.get("kind")??"avatar";
       const key=`${kind}s/${userId}_${Date.now()}.${ext}`;
-      await env.ASSETS.put(key,req.body,{httpMetadata:{contentType:ct}});
+      await env.ASSETS.put(key, req.body, {httpMetadata:{contentType:ct}});
       return new Response(JSON.stringify({url:`/files/${key}`}),{headers:{"Content-Type":"application/json",...CORS}});
     }
 
-    // File serve
     if (m==="GET" && p.startsWith("/files/")) {
       const key=p.replace("/files/","");
       const obj=await env.ASSETS.get(key);
@@ -533,10 +533,8 @@ export default {
       return new Response(obj.body,{headers:{"Content-Type":obj.httpMetadata?.contentType??"image/jpeg","Cache-Control":"public,max-age=86400"}});
     }
 
-    // Server management
-    if (p.startsWith("/servers/") || p.startsWith("/dms/")) return proxy(serversDO(env),req);
+    if (p.startsWith("/servers/") || p.startsWith("/dms/")) return proxy(serversDO(env), req);
 
-    // Chat WebSockets (PartyKit rooms)
-    return (await routePartykitRequest(req,env as unknown as Record<string, unknown>)) ?? new Response("Not found",{status:404});
+    return (await routePartykitRequest(req, env as unknown as Record<string, unknown>)) ?? new Response("Not found",{status:404});
   },
 } satisfies ExportedHandler<Env>;

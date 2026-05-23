@@ -1,5 +1,7 @@
 // ── Users ─────────────────────────────────────────────────────────────────────
 
+export type UserStatus = "online" | "idle" | "dnd" | "offline";
+
 export type User = {
   userId: string;
   username: string;
@@ -7,9 +9,10 @@ export type User = {
   avatarUrl: string | null;
   bannerColor: string;
   bio: string;
-  isNitro: boolean;        // premium hook — free for now
-  badges: string[];        // e.g. ["nitro", "early_supporter"]
+  isNitro: boolean;
+  badges: string[];
   createdAt: number;
+  status?: UserStatus;
 };
 
 export type AuthUser = User & { token: string };
@@ -23,8 +26,8 @@ export type Server = {
   bannerUrl: string | null;
   ownerId: string;
   inviteCode: string;
-  boostCount: number;      // premium hook
-  theme: string | null;    // premium hook — custom theme colour
+  boostCount: number;
+  theme: string | null;
   createdAt: number;
 };
 
@@ -60,8 +63,8 @@ export type ChatMessage = {
   avatarUrl: string | null;
   isNitro: boolean;
   text: string;
-  attachments: string[];   // URLs
-  reactions: Record<string, string[]>; // emoji -> userIds
+  attachments: string[];
+  reactions: Record<string, string[]>;
   editedAt: number | null;
   at: number;
 };
@@ -75,14 +78,14 @@ export type SystemMessage = {
 
 // ── WebSocket events (server → client) ───────────────────────────────────────
 
-export type TypingEvent    = { type: "typing";  userId: string; username: string; isTyping: boolean };
-export type OnlineEvent    = { type: "online";  count: number; users: { userId: string; username: string; avatarUrl: string | null }[] };
-export type HistoryEvent   = { type: "history"; messages: (ChatMessage | SystemMessage)[] };
-export type ReactionEvent  = { type: "reaction"; messageId: string; emoji: string; userId: string; action: "add" | "remove" };
-export type VoiceJoinEvent = { type: "voice_join"; userId: string; username: string; channelId: string };
-export type VoiceLeaveEvent= { type: "voice_leave"; userId: string; channelId: string };
-export type VoiceStateEvent= { type: "voice_state"; channelId: string; users: { userId: string; username: string }[] };
-export type SignalEvent    = { type: "signal"; from: string; to: string; data: any | any };
+export type TypingEvent     = { type: "typing";      userId: string; username: string; isTyping: boolean };
+export type OnlineEvent     = { type: "online";       count: number; users: { userId: string; username: string; avatarUrl: string | null }[] };
+export type HistoryEvent    = { type: "history";      messages: (ChatMessage | SystemMessage)[] };
+export type ReactionEvent   = { type: "reaction";     messageId: string; emoji: string; userId: string; action: "add" | "remove" };
+export type VoiceJoinEvent  = { type: "voice_join";   userId: string; username: string; channelId: string };
+export type VoiceLeaveEvent = { type: "voice_leave";  userId: string; channelId: string };
+export type VoiceStateEvent = { type: "voice_state";  channelId: string; users: { userId: string; username: string }[] };
+export type SignalEvent     = { type: "signal";       from: string; to: string; data: unknown };
 
 export type ServerEvent =
   | ChatMessage | SystemMessage
@@ -93,18 +96,12 @@ export type ServerEvent =
 
 // ── WebSocket events (client → server) ───────────────────────────────────────
 
-export type ClientSendMessage = {
-  type: "message";
-  text: string;
-  userId: string; username: string; displayName: string;
-  avatarUrl: string | null; isNitro: boolean;
-  attachments?: string[];
-};
-export type ClientTyping  = { type: "typing"; userId: string; username: string; isTyping: boolean };
-export type ClientReaction= { type: "reaction"; messageId: string; emoji: string; userId: string; action: "add" | "remove" };
-export type ClientSignal  = { type: "signal"; from: string; to: string; data: any | any };
-export type ClientVoiceJoin = { type: "voice_join"; userId: string; username: string; channelId: string };
-export type ClientVoiceLeave= { type: "voice_leave"; userId: string; channelId: string };
+export type ClientSendMessage  = { type: "message";     text: string; userId: string; username: string; displayName: string; avatarUrl: string | null; isNitro: boolean; attachments?: string[] };
+export type ClientTyping       = { type: "typing";      userId: string; username: string; isTyping: boolean };
+export type ClientReaction     = { type: "reaction";    messageId: string; emoji: string; userId: string; action: "add" | "remove" };
+export type ClientSignal       = { type: "signal";      from: string; to: string; data: unknown };
+export type ClientVoiceJoin    = { type: "voice_join";  userId: string; username: string; channelId: string };
+export type ClientVoiceLeave   = { type: "voice_leave"; userId: string; channelId: string };
 
 export type ClientEvent =
   | ClientSendMessage | ClientTyping | ClientReaction
@@ -113,6 +110,6 @@ export type ClientEvent =
 // ── DM ────────────────────────────────────────────────────────────────────────
 
 export type DMConversation = {
-  dmId: string;          // sorted userId pair joined by "_"
+  dmId: string;
   participants: string[];
 };

@@ -32,7 +32,7 @@
 	"scripts": {
 		"build:client": "esbuild src/client/index.tsx --bundle --outfile=public/dist/index.js --target=es2022",
 		"cf-typegen": "wrangler types ./src/server/worker-configuration.d.ts",
-		"check": "tsc --project src/client && tsc --project src/server && npm run build:client && wrangler deploy --dry-run",
+		"check": "tsc --project src/client/tsconfig.json && tsc --project src/server/tsconfig.json && npm run build:client && wrangler deploy --dry-run",
 		"deploy": "npm run build:client && wrangler deploy",
 		"dev": "npm run build:client && wrangler dev"
 	},
